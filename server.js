@@ -1,30 +1,35 @@
-const express = require('express');
 const Excel = require('exceljs');
-const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
-const app = express();
-app.use(cors());
-app.use(express.json()); // <<< THÊM DÒNG NÀY để nhận JSON từ client
-
-app.post('/bao-gia-excel', async (req, res) => {
+// Vercel API route xuất excel cho báo giá
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method Not Allowed' });
+    return;
+  }
   try {
-    const items = req.body.items;
+    const { items = [], customer = {} } = req.body;
 
-    // Nếu có truyền info khách hàng, bạn lấy luôn:
-    const customer = req.body.customer || {}; // {name, phone, address}
+    // --- Đọc file mẫu dưới dạng buffer (phải nằm trong repo, cùng cấp file này hoặc thư mục con) ---
+    const filePath = path.join(process.cwd(), 'form_bao_gia_cau_hinh_sintech.xlsx');
+    const buffer = fs.readFileSync(filePath); // Đảm bảo file này push lên github repo luôn!
 
     const workbook = new Excel.Workbook();
-    await workbook.xlsx.readFile('form_bao_gia_cau_hinh_sintech.xlsx');
+    await workbook.xlsx.load(buffer);
 
     const ws = workbook.getWorksheet('CH1');
-    if (!ws) return res.status(500).send('Không tìm thấy worksheet!');
+    if (!ws) {
+      res.status(500).json({ error: 'Không tìm thấy worksheet!' });
+      return;
+    }
 
-    // --- GHI THÔNG TIN KHÁCH HÀNG (nếu có) ---
+    // Ghi thông tin khách hàng
     ws.getCell('B7').value = customer.name || '';
     ws.getCell('B8').value = customer.phone || '';
     ws.getCell('B9').value = customer.address || '';
 
-    // --- GHI DANH SÁCH SẢN PHẨM ---
+    // Ghi danh sách sản phẩm từ dòng 12
     let startRow = 12;
     let stt = 1;
     items.forEach(item => {
@@ -40,15 +45,14 @@ app.post('/bao-gia-excel', async (req, res) => {
       stt++;
     });
 
-    const buffer = await workbook.xlsx.writeBuffer();
+    // Xuất buffer trả về cho client
+    const outBuffer = await workbook.xlsx.writeBuffer();
     res.setHeader('Content-Disposition', 'attachment; filename="bao_gia_sintech.xlsx"');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buffer);
+    res.send(outBuffer);
 
   } catch (err) {
     // console.error(err);
     res.status(500).send('Có lỗi xảy ra khi xuất báo giá, vui lòng thử lại sau!');
   }
-});
-
-app.listen(3000, () => console.log('Server started!'));
+}
