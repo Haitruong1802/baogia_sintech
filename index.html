@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Xuất báo giá Sintech</title>
+</head>
+<body>
+  <h2>Thông tin khách hàng</h2>
+  <div>
+    <input id="customer-name" type="text" placeholder="Tên khách hàng" />
+    <input id="customer-phone" type="text" placeholder="Số điện thoại" />
+    <input id="customer-address" type="text" placeholder="Địa chỉ" />
+  </div>
+  
+  <br>
+  <!-- Nút Xuất Excel -->
+  <button onclick="exportBaoGiaSintech()">Xuất báo giá Excel</button>
+
+  <script>
+    // Ví dụ pc_components giả lập, thực tế bạn lấy data từ build pc của bạn
+    const pc_components = [
+      { name: "CPU", handle: "cpu" },
+      { name: "RAM", handle: "ram" }
+    ];
+
+    function exportBaoGiaSintech() {
+      const items = [];
+      pc_components.forEach(comp => {
+        const data = JSON.parse(localStorage.getItem('buildpc_' + comp.handle) || 'null');
+        if (data) {
+          items.push({
+            group: comp.name,
+            name: data.title,
+            brand: data.brand || data.desc || "",
+            qty: data.qty || 1,
+            price: Number(data.price || 0),
+            total: (data.qty || 1) * Number(data.price || 0),
+            warranty: data.warranty || ""
+          });
+        }
+      });
+
+      if (items.length === 0) {
+        alert("Bạn chưa chọn linh kiện nào!");
+        return;
+      }
+
+      const customer = {
+        name: document.getElementById('customer-name').value || "",
+        phone: document.getElementById('customer-phone').value || "",
+        address: document.getElementById('customer-address').value || ""
+      };
+
+      // Đổi link bên dưới thành link Vercel của bạn!
+      fetch('https://baogia-sintech.vercel.app/api/bao-gia-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, customer })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('Tải file thất bại');
+        return res.blob();
+      })
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'bao_gia_sintech.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        }, 1000);
+      })
+      .catch(e => alert('Có lỗi khi xuất báo giá: ' + e.message));
+    }
+  </script>
+</body>
+</html>
