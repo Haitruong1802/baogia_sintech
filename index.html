@@ -23,6 +23,22 @@
       { name: "RAM", handle: "ram" }
     ];
 
+    // Dữ liệu mẫu để test nhanh (sau này bạn thay bằng localStorage thật của bạn)
+    localStorage.setItem('buildpc_cpu', JSON.stringify({
+      title: "Intel Core i5-12400F",
+      brand: "Intel",
+      qty: 1,
+      price: 2790000,
+      warranty: "36 tháng"
+    }));
+    localStorage.setItem('buildpc_ram', JSON.stringify({
+      title: "RAM 16GB DDR4",
+      brand: "Kingston",
+      qty: 2,
+      price: 800000,
+      warranty: "36 tháng"
+    }));
+
     function exportBaoGiaSintech() {
       const items = [];
       pc_components.forEach(comp => {
