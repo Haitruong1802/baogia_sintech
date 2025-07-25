@@ -27,7 +27,7 @@ export default async function handler(req, res) {
 
     // Xác định số dòng trống có sẵn trong template
     let startRow = 12; // Dòng đầu tiên để ghi dữ liệu
-    const templateRows = 15; // Sửa đúng bằng số dòng trống có sẵn dưới template
+    const templateRows = 1; // Sửa đúng bằng số dòng trống có sẵn dưới template
     const neededRows = items.length;
 
     // Nếu thiếu dòng, phát sinh thêm dòng mới và copy style từ dòng cuối template
