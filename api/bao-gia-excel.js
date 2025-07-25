@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     let startRow = 12, stt = 1;
     for (const item of items) {
       ws.getCell(`A${startRow}`).value = stt;
-      ws.getCell(`B${startRow}`).value = item.group;
+      // ws.getCell(`B${startRow}`).value = item.group;
       ws.getCell(`C${startRow}`).value = item.name;
       ws.getCell(`D${startRow}`).value = item.brand;
       ws.getCell(`E${startRow}`).value = item.qty;
