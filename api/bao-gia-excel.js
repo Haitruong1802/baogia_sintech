@@ -20,38 +20,35 @@ export default async function handler(req, res) {
     const ws = workbook.getWorksheet('CH1');
     if (!ws) return res.status(500).json({ error: 'Không tìm thấy worksheet!' });
 
-    // Update thông tin khách hàng
+    // Gán thông tin khách hàng
     ws.getCell('C7').value = customer?.name || '';
     ws.getCell('C8').value = customer?.phone || '';
     ws.getCell('C9').value = customer?.address || '';
 
-    // --- Ghi sản phẩm & Xóa dòng thừa ---
-    const startRow = 12;  // Dòng đầu tiên để ghi dữ liệu
-    const maxRows = 16;   // Số dòng tối đa (linh kiện tối đa)
-    const writeCount = Math.min(items.length, maxRows);
+    // Thông số vùng sản phẩm (dòng bắt đầu và số dòng tối đa)
+    const startRow = 12; // dòng bắt đầu ghi sản phẩm
+    const maxRows = 16;  // tối đa số dòng sản phẩm cho phép (template)
+    const n = items.length;
 
-    // Ghi dữ liệu sản phẩm
-    let writeRow = startRow, stt = 1;
-    for (let i = 0; i < writeCount; i++) {
-      const item = items[i];
-      ws.getCell(`A${writeRow}`).value = stt;
-      ws.getCell(`B${writeRow}`).value = item.name || '';
-      ws.getCell(`C${writeRow}`).value = item.brand || '';
-      ws.getCell(`D${writeRow}`).value = item.qty || '';
-      ws.getCell(`E${writeRow}`).value = item.price || '';
-      ws.getCell(`F${writeRow}`).value = item.total || '';
-      ws.getCell(`G${writeRow}`).value = item.warranty || '';
-      writeRow++; stt++;
+    // Ghi dữ liệu sản phẩm vào sheet
+    for (let i = 0; i < n; i++) {
+      const row = ws.getRow(startRow + i);
+      row.getCell(1).value = i + 1;
+      row.getCell(2).value = items[i].name || '';
+      row.getCell(3).value = items[i].brand || '';
+      row.getCell(4).value = items[i].qty || '';
+      row.getCell(5).value = items[i].price || '';
+      // row.getCell(6).value = items[i].total || '';
+      row.getCell(7).value = items[i].warranty || '';
     }
 
-    // Xóa các dòng dư nếu có
-    if (writeCount < maxRows) {
-      // Chú ý: spliceRows xóa theo index, mỗi lần xóa dòng phía dưới sẽ dồn lên
-      const firstRowToDelete = startRow + writeCount;
-      const rowsToDelete = maxRows - writeCount;
-      ws.spliceRows(firstRowToDelete, rowsToDelete);
+    // Xóa dòng dư nếu số sản phẩm < maxRows
+    if (n < maxRows) {
+      // Chỉ xóa row vùng sản phẩm, không ảnh hưởng vùng phía dưới
+      ws.spliceRows(startRow + n, maxRows - n);
     }
 
+    // Xuất file
     const excelBuffer = await workbook.xlsx.writeBuffer();
     res.setHeader('Content-Disposition', 'attachment; filename="bao_gia_sintech.xlsx"');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
