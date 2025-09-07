@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       row.getCell(3).value = Number(it.qty) || 0;          // C - SL
       row.getCell(4).value = Number(it.price) || 0;        // D - Đơn giá
       // E - Thành tiền: để công thức trong file (C*D) hoặc đặt lại tại đây:
-      // row.getCell(5).value = { formula: `C${rowIndex}*D${rowIndex}` };
+      row.getCell(5).value = { formula: `C${rowIndex}*D${rowIndex}` };
       row.getCell(6).value = it.warranty || '';            // F - Bảo hành
       row.commit();
       rowIndex++; stt++;
