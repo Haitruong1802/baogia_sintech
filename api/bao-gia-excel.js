@@ -2,6 +2,23 @@ import fs from 'fs';
 import path from 'path';
 import Excel from 'exceljs';
 
+const toNumber = (v) => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (v == null) return 0;
+  const s = String(v).replace(/[^\d.-]/g, ''); // bỏ , . khoảng trắng, ₫
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const sanitize = (s) =>
+  String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+
+const ymdHMS = () => {
+  const now = new Date();
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+};
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -16,57 +33,83 @@ export default async function handler(req, res) {
     const filePath = path.join(process.cwd(), 'form_bao_gia_cau_hinh_sintech.xlsx');
     const buffer = fs.readFileSync(filePath);
 
-    const workbook = new Excel.Workbook();
-    await workbook.xlsx.load(buffer);
-    const ws = workbook.getWorksheet('CH1');
+    const wb = new Excel.Workbook();
+    await wb.xlsx.load(buffer);
+    const ws = wb.getWorksheet('CH1');
     if (!ws) return res.status(500).json({ error: 'Không tìm thấy worksheet!' });
 
-    // Fill customer info
-    ws.getCell('B7').value = customer.name || '';
-    ws.getCell('B8').value = customer.phone || '';
-    ws.getCell('B9').value = customer.address || '';
+    // Thông tin khách hàng
+    ws.getCell('B7').value = sanitize(customer.name);
+    ws.getCell('B8').value = sanitize(customer.phone);
+    ws.getCell('B9').value = sanitize(customer.address);
 
-    // ===== Vùng dữ liệu =====
-    const DATA_START = 12;                 // dòng mẫu có sẵn trong file
-    const count = Math.max(items.length, 0);
+    const DATA_START = 12;
+    const n = items.length;
 
-    // Nếu có nhiều hơn 1 item, nhân bản dòng mẫu (giữ style) và CHÈN xuống dưới
-    // Ví dụ có 5 item → cần thêm 4 dòng nữa (vì dòng 12 đã là mẫu)
-    if (count > 1) {
-      ws.duplicateRow(DATA_START, count - 1, true); // true = insert
-    }
+    // Nhân bản dòng mẫu 12 để giữ nguyên border/numFmt/công thức
+    if (n > 1) ws.duplicateRow(DATA_START, n - 1, true);
 
-    // Ghi dữ liệu
-    let rowIndex = DATA_START;
+    // Kiểm tra dòng mẫu E12 đã có công thức (=C*D) chưa
+    const tplVal = ws.getCell(`E${DATA_START}`).value;
+    const templateHasFormula = tplVal && typeof tplVal === 'object' && 'formula' in tplVal;
+
+    // Ghi dữ liệu từng dòng
+    let r = DATA_START;
     let stt = 1;
     for (const it of items) {
-      const row = ws.getRow(rowIndex);
-      row.getCell(1).value = stt;                          // A - STT
-      row.getCell(2).value = it.name || '';                // B - Tên SP
-      row.getCell(3).value = Number(it.qty) || 0;          // C - SL
-      row.getCell(4).value = Number(it.price) || 0;        // D - Đơn giá
-      // E - Thành tiền: để công thức trong file (C*D) hoặc đặt lại tại đây:
-      row.getCell(5).value = { formula: `C${rowIndex}*D${rowIndex}` };
-      row.getCell(6).value = it.warranty || '';            // F - Bảo hành
+      const qty = toNumber(it.qty);
+      const price = toNumber(it.price);
+
+      const row = ws.getRow(r);
+      row.getCell(1).value = stt;                  // A: STT
+      row.getCell(2).value = sanitize(it.name);    // B: Tên SP
+      row.getCell(3).value = qty;                  // C: SL (số)
+      row.getCell(4).value = price;                // D: Đơn giá (số)
+
+      // E: Giữ công thức từ dòng mẫu; nếu mẫu KHÔNG có công thức thì set kèm result
+      if (!templateHasFormula) {
+        row.getCell(5).value = { formula: `C${r}*D${r}`, result: qty * price };
+      }
+
+      row.getCell(6).value = sanitize(it.warranty); // F: Bảo hành
       row.commit();
-      rowIndex++; stt++;
+
+      r++; stt++;
     }
 
-    // ===== Cập nhật lại ô TỔNG (nếu cần) =====
-    // Tìm dòng có chữ "TỔNG:" ở cột D để đặt lại công thức tổng cột E
+    // Tìm dòng "TỔNG:" ở cột D và đặt công thức tổng cột E
     let totalRow = null;
-    for (let r = rowIndex; r <= rowIndex + 50; r++) {
-      const v = (ws.getCell(`D${r}`).value || '').toString().trim();
-      if (v && v.toUpperCase().includes('TỔNG')) { totalRow = r; break; }
+    for (let i = r; i <= r + 60; i++) {
+      const v = (ws.getCell(`D${i}`).value || '').toString().trim().toUpperCase();
+      if (v.includes('TỔNG')) { totalRow = i; break; }
     }
-    if (totalRow && items.length > 0) {
-      ws.getCell(`E${totalRow}`).value = { formula: `SUM(E${DATA_START}:E${rowIndex - 1})` };
+    if (totalRow && n > 0) {
+      ws.getCell(`E${totalRow}`).value = { formula: `SUM(E${DATA_START}:E${r - 1})`, result: 0 };
     }
 
-    const excelBuffer = await workbook.xlsx.writeBuffer();
-    res.setHeader('Content-Disposition', 'attachment; filename="bao_gia_sintech.xlsx"');
+    // (Tuỳ chọn) chốt viền dưới cho dòng sản phẩm cuối nếu cần
+    // const last = ws.getRow(r - 1);
+    // for (let c = 1; c <= 6; c++) {
+    //   const prevBorder = last.getCell(c).border || {};
+    //   last.getCell(c).border = { ...prevBorder, bottom: { style: 'thin', color: { argb: 'FF000000' } } };
+    // }
+    // last.commit();
+
+    const buf = await wb.xlsx.writeBuffer();
+
+    // Tên file theo yyyyMMdd_HHmmss (có thể kèm tên KH đã bỏ dấu)
+    const nameSlug = sanitize(customer.name || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      .toLowerCase();
+    const dateStr = ymdHMS();
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="bao_gia_sintech${nameSlug ? '_' + nameSlug : ''}_${dateStr}.xlsx"`
+    );
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(Buffer.from(excelBuffer));
+    res.send(Buffer.from(buf));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Export failed!' });
