@@ -2,14 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import Excel from 'exceljs';
 
-const toNumber = (v) => {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (v == null) return 0;
-  const s = String(v).replace(/[^\d.-]/g, '');
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-};
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -28,59 +20,63 @@ export default async function handler(req, res) {
     const ws = wb.getWorksheet('CH1');
     if (!ws) return res.status(500).json({ error: 'Không tìm thấy worksheet!' });
 
-    // Điền thông tin KH
-    ws.getCell('B7').value = customer.name || '';
-    ws.getCell('B8').value = customer.phone || '';
-    ws.getCell('B9').value = customer.address || '';
+    // Thông tin KH
+    ws.getCell('C7').value = customer.name || '';
+    ws.getCell('C8').value = customer.phone || '';
+    ws.getCell('C9').value = customer.address || '';
 
     const DATA_START = 12;
+    const n = items.length;
 
-    // Nhân bản dòng mẫu để giữ style/border/công thức
-    if (items.length > 1) {
-      ws.duplicateRow(DATA_START, items.length - 1, true); // insert
-    }
+    // Nhân bản dòng mẫu để giữ border/format/công thức
+    if (n > 1) ws.duplicateRow(DATA_START, n - 1, true);
 
-    // Ghi dữ liệu (KHÔNG đụng cột E để giữ công thức từ dòng mẫu)
-    let rowIdx = DATA_START;
-    let stt = 1;
+    // (tuỳ chọn) hàm copy style từ dòng mẫu phòng khi duplicateRow không giữ đủ border
+    const templateRow = ws.getRow(DATA_START);
+    const copyStyleFromTemplate = (row) => {
+      row.eachCell({ includeEmpty: true }, (cell, c) => {
+        const s = templateRow.getCell(c).style || {};
+        // deep clone để tránh tham chiếu chung
+        cell.style = JSON.parse(JSON.stringify(s));
+      });
+    };
+
+    let r = DATA_START, stt = 1;
     for (const it of items) {
       const qty = toNumber(it.qty);
       const price = toNumber(it.price);
 
-      const row = ws.getRow(rowIdx);
-      row.getCell(1).value = stt;                  // A: STT
-      row.getCell(2).value = it.name || '';        // B: Tên SP
-      row.getCell(3).value = qty;                  // C: SL (số)
-      row.getCell(4).value = price;                // D: Đơn giá (số)
-      row.getCell(5).value = { formula: `C${rowIndex}*D${rowIndex}` };
-      row.getCell(6).value = it.warranty || '';    // F: Bảo hành
+      const row = ws.getRow(r);
+      // Nếu thấy mất kẻ, bật dòng dưới:
+      // copyStyleFromTemplate(row);
+
+      row.getCell(1).value = stt;               // A: STT
+      row.getCell(2).value = it.name || '';     // B: Tên SP
+      row.getCell(3).value = qty;               // C: SL (số)
+      row.getCell(4).value = price;             // D: Đơn giá (số)
+      // E: GIỮ công thức từ dòng mẫu (=C*D). KHÔNG gán lại bằng code.
+      row.getCell(6).value = it.warranty || ''; // F: Bảo hành
       row.commit();
 
-      rowIdx++; stt++;
+      r++; stt++;
     }
 
-    // Cập nhật ô TỔNG (nếu tổng ở cột E, nhãn "TỔNG:" ở cột D)
-    // Tìm dòng nhãn "TỔNG:" phía dưới
+    // Cập nhật ô TỔNG (nếu có nhãn "TỔNG:" ở cột D)
     let totalRow = null;
-    for (let r = rowIdx; r <= rowIdx + 50; r++) {
-      const v = (ws.getCell(`D${r}`).value || '').toString().trim().toUpperCase();
-      if (v.includes('TỔNG')) { totalRow = r; break; }
+    for (let i = r; i <= r + 50; i++) {
+      const v = (ws.getCell(`D${i}`).value || '').toString().trim().toUpperCase();
+      if (v.includes('TỔNG')) { totalRow = i; break; }
     }
-    if (totalRow && items.length > 0) {
-      ws.getCell(`E${totalRow}`).value = { formula: `SUM(E${DATA_START}:E${rowIdx - 1})`, result: 0 };
+    if (totalRow && n > 0) {
+      ws.getCell(`E${totalRow}`).value = { formula: `SUM(E${DATA_START}:E${r - 1})`, result: 0 };
     }
 
-    // Tên file theo yyyyMMdd_HHmmss
-    const now = new Date();
-    const pad = (n) => n.toString().padStart(2, '0');
-    const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
-    const excelBuffer = await wb.xlsx.writeBuffer();
-    res.setHeader('Content-Disposition', `attachment; filename="bao_gia_sintech_${dateStr}.xlsx"`);
+    const buf = await wb.xlsx.writeBuffer();
+    res.setHeader('Content-Disposition', 'attachment; filename="bao_gia_sintech.xlsx"');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(Buffer.from(excelBuffer));
+    res.send(Buffer.from(buf));
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: 'Export failed!' });
+    res.status(500).json({ error: 'Export failed!' });
   }
 }
