@@ -97,6 +97,49 @@ export default async function handler(req, res) {
 
     const buf = await wb.xlsx.writeBuffer();
 
+    // ===== Sau khi ghi xong các dòng sản phẩm =====
+
+    // last data row của bảng
+    const lastDataRow = items.length ? (DATA_START + items.length - 1) : (DATA_START - 1);
+
+    // Helper: tìm hàng theo nhãn ở cột D
+    const findRowByLabel = (regex) => {
+      const maxR = ws.rowCount;
+      for (let r = DATA_START; r <= maxR; r++) {
+        const txt = (ws.getCell(`D${r}`).value || '').toString().trim();
+        if (regex.test(txt)) return r;
+      }
+      return null;
+    };
+
+    // Xác định các dòng cần tính
+    const rTong       = findRowByLabel(/^TỔNG\b/i);
+    const rVat        = findRowByLabel(/THUẾ\s*GTGT/i);
+    const rGiamGia    = findRowByLabel(/GIẢM\s*GIÁ/i);
+    const rThanhTien  = findRowByLabel(/THÀNH\s*TIỀN/i);
+
+    // TỔNG = SUM(E từ dòng dữ liệu đầu đến cuối)
+    if (rTong && items.length) {
+      ws.getCell(`E${rTong}`).value = { formula: `SUM(E${DATA_START}:E${lastDataRow})`, result: 0 };
+    }
+
+    // VAT = TỔNG * % lấy từ nhãn (mặc định 8% nếu không parse được)
+    if (rVat && rTong) {
+      const dText = (ws.getCell(`D${rVat}`).value || '').toString();
+      const m = dText.match(/(\d+(?:\.\d+)?)\s*%/);
+      const rate = m ? Number(m[1]) / 100 : 0.08;
+      ws.getCell(`E${rVat}`).value = { formula: `E${rTong}*${rate}`, result: 0 };
+    }
+
+    // THÀNH TIỀN = TỔNG + VAT - GIẢM GIÁ
+    if (rThanhTien && rTong) {
+      const parts = [`E${rTong}`];
+      if (rVat)     parts.push(`E${rVat}`);
+      if (rGiamGia) parts.push(`-E${rGiamGia}`);
+      ws.getCell(`E${rThanhTien}`).value = { formula: parts.join('+'), result: 0 };
+    }
+
+
     // Tên file theo yyyyMMdd_HHmmss (có thể kèm tên KH đã bỏ dấu)
     const nameSlug = sanitize(customer.name || '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
