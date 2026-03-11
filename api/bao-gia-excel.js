@@ -40,11 +40,23 @@ export default async function handler(req, res) {
 
     const buildQuoteCode = () => {
     const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return `SỐ: ${pad(now.getHours())}${pad(now.getMinutes())}-${pad(now.getDate())}${pad(now.getMonth() + 1)}${String(now.getFullYear()).slice(-2)}/BG`;
+
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour12: false
+    }).formatToParts(now);
+
+    const get = (type) => parts.find(p => p.type === type)?.value || '';
+
+    return `SỐ: ${get('hour')}${get('minute')}-${get('day')}${get('month')}${get('year')}/BG`;
   };
 
-ws.getCell('F6').value = buildQuoteCode();
+  ws.getCell('F6').value = buildQuoteCode();
 
     // Thông tin khách hàng
     ws.getCell('B7').value = sanitize(customer.name);
