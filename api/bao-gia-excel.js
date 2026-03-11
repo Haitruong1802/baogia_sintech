@@ -38,6 +38,14 @@ export default async function handler(req, res) {
     const ws = wb.getWorksheet('CH1');
     if (!ws) return res.status(500).json({ error: 'Không tìm thấy worksheet!' });
 
+    const buildQuoteCode = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `SỐ: ${pad(now.getHours())}${pad(now.getMinutes())}-${pad(now.getDate())}${pad(now.getMonth() + 1)}${String(now.getFullYear()).slice(-2)}/BG`;
+  };
+
+ws.getCell('F6').value = buildQuoteCode();
+
     // Thông tin khách hàng
     ws.getCell('B7').value = sanitize(customer.name);
     ws.getCell('B8').value = sanitize(customer.phone);
